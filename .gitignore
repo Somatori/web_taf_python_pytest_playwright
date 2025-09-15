@@ -21,4 +21,3 @@ artifacts/
 *.log
 dist/
 build/
-EOF
