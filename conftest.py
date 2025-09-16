@@ -1,38 +1,113 @@
 import pytest
 import os
+import re
+import shutil
 from playwright.sync_api import sync_playwright
 from configs.config import BROWSER, HEADED, SLOW_MO, BASE_URL, REPORT_PATH
 from model.user import User
 
-@pytest.fixture(scope="function")
-def page():
-    """
-    Provides a Playwright `page` object for every test function.
 
-    Uses the sync_playwright() context manager to start/stop Playwright cleanly.
-    Default behaviour (from configs/config.py): Chromium + headed mode.
-    You can override with env vars:
-      HEADED=false  -> run headless
-      BROWSER=chromium|firefox|webkit
-      SLOW_MO=50    -> slow down actions for debugging
+def _safe_test_name(nodeid: str) -> str:
+    # create a filesystem-safe name based on pytest nodeid
+    name = nodeid.replace("::", "__")
+    name = re.sub(r'[^0-9A-Za-z._-]+', '_', name)
+    return name
+
+
+# Ensure pytest attaches test reports to node for later inspection in fixtures
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    rep = outcome.get_result()
+    # attach the report object to the test item for later access
+    setattr(item, "rep_" + rep.when, rep)
+
+
+@pytest.fixture(scope="function")
+def page(request):
     """
+    Playwright page fixture that records video to artifacts/videos.
+
+    Behavior:
+      - by default keeps videos only for failed tests
+      - set env KEEP_VIDEOS=true to keep videos for all tests
+      - set env VIDEO_DIR to change the directory (default: artifacts/videos)
+      - record size is 1280x720 (configurable in code)
+    """
+    VIDEO_DIR = os.getenv("VIDEO_DIR", "artifacts/videos")
+    os.makedirs(VIDEO_DIR, exist_ok=True)
+
+    keep_videos_all = os.getenv("KEEP_VIDEOS", "true").lower() in ("1", "true", "yes")
+
     with sync_playwright() as p:
-        # p.chromium / p.firefox / p.webkit
         browser_launcher = getattr(p, BROWSER)
         browser = browser_launcher.launch(headless=not HEADED, slow_mo=SLOW_MO)
-        context = browser.new_context()
+        # instruct Playwright to store per-page video in VIDEO_DIR
+        context = browser.new_context(record_video_dir=VIDEO_DIR, record_video_size={"width": 1280, "height": 720})
         page = context.new_page()
-        # optional: set viewport / timeout etc here if desired
+
         yield page
-        # teardown
+
+        # ---- teardown: flush & handle video ----
         try:
-            context.close()
-        except Exception:
-            pass
-        try:
-            browser.close()
-        except Exception:
-            pass
+            # Close the page to flush the video file
+            try:
+                page.close()
+            except Exception:
+                pass
+
+            # Attempt to retrieve the recorded video path (Playwright provides this)
+            video_path = None
+            try:
+                vid = page.video
+                if vid:
+                    # .path() returns the path to the recorded webm file
+                    video_path = vid.path()
+            except Exception:
+                video_path = None
+
+            # Decide whether to keep the video based on test result or env override
+            test_failed = getattr(request.node, "rep_call", None) and request.node.rep_call.failed
+
+            if video_path and os.path.exists(video_path):
+                safe_name = _safe_test_name(request.node.nodeid) + ".webm"
+                dest = os.path.join(VIDEO_DIR, safe_name)
+
+                if keep_videos_all or test_failed:
+                    # move the produced video to a nicer file name
+                    try:
+                        # If dest exists, overwrite it
+                        if os.path.exists(dest):
+                            os.remove(dest)
+                        shutil.move(video_path, dest)
+                    except Exception:
+                        # if move fails, leave the original file
+                        pass
+                else:
+                    # test passed and KEEP_VIDEOS not set -> remove temporary video to save space
+                    try:
+                        os.remove(video_path)
+                    except Exception:
+                        pass
+
+                # Attempt to remove the parent directory if it's empty (Playwright places the file in a directory)
+                try:
+                    parent = os.path.dirname(video_path)
+                    if parent and os.path.isdir(parent):
+                        os.rmdir(parent)
+                except Exception:
+                    pass
+
+        finally:
+            # close context and browser
+            try:
+                context.close()
+            except Exception:
+                pass
+            try:
+                browser.close()
+            except Exception:
+                pass
 
 
 # If you installed python-dotenv for local convenience, auto-load .env (safe because .env is in .gitignore)

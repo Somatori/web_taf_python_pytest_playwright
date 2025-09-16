@@ -21,3 +21,7 @@ pytest tests/test_login.py -q
 
 ## Report:
 HTML report is generated at artifacts/report.html (pytest.ini sets this).
+
+## Record video:
+Video is generated at artifacts/videos if the test is failed (by default).
+Set env KEEP_VIDEOS=true in the conftest.py to keep videos for all tests.
