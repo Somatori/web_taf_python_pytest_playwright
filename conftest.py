@@ -3,8 +3,18 @@ import os
 import re
 import shutil
 from playwright.sync_api import sync_playwright
-from configs.config import BROWSER, HEADED, SLOW_MO, BASE_URL, REPORT_PATH
+from configs.config import BROWSER, HEADED, SLOW_MO, KEEP_VIDEOS, VIDEO_DIR, VIDEO_WIDTH, VIDEO_HEIGHT
 from model.user import User
+
+
+# If you installed python-dotenv for local convenience, auto-load .env (safe because .env is in .gitignore)
+try:
+    from dotenv import load_dotenv
+    # load .env from repo root if present (no-op if not)
+    load_dotenv()
+except Exception:
+    # dotenv not installed or failed — that's fine; we'll rely on env vars
+    pass
 
 
 def _safe_test_name(nodeid: str) -> str:
@@ -26,24 +36,24 @@ def pytest_runtest_makereport(item, call):
 @pytest.fixture(scope="function")
 def page(request):
     """
-    Playwright page fixture that records video to artifacts/videos.
+    Playwright page fixture that records video to VIDEO_DIR.
 
     Behavior:
-      - by default keeps videos only for failed tests
-      - set env KEEP_VIDEOS=true to keep videos for all tests
-      - set env VIDEO_DIR to change the directory (default: artifacts/videos)
-      - record size is 1280x720 (configurable in code)
+      - by default keeps videos only for failed tests (KEEP_VIDEOS=False)
+      - set KEEP_VIDEOS=true in .env or env to keep videos for all tests
+      - set VIDEO_DIR to change the directory (default: artifacts/videos)
+      - video size controlled by VIDEO_WIDTH and VIDEO_HEIGHT
     """
-    VIDEO_DIR = os.getenv("VIDEO_DIR", "artifacts/videos")
     os.makedirs(VIDEO_DIR, exist_ok=True)
-
-    keep_videos_all = os.getenv("KEEP_VIDEOS", "true").lower() in ("1", "true", "yes")
 
     with sync_playwright() as p:
         browser_launcher = getattr(p, BROWSER)
         browser = browser_launcher.launch(headless=not HEADED, slow_mo=SLOW_MO)
         # instruct Playwright to store per-page video in VIDEO_DIR
-        context = browser.new_context(record_video_dir=VIDEO_DIR, record_video_size={"width": 1280, "height": 720})
+        context = browser.new_context(
+            record_video_dir=VIDEO_DIR,
+            record_video_size={"width": VIDEO_WIDTH, "height": VIDEO_HEIGHT},
+        )
         page = context.new_page()
 
         yield page
@@ -73,7 +83,7 @@ def page(request):
                 safe_name = _safe_test_name(request.node.nodeid) + ".webm"
                 dest = os.path.join(VIDEO_DIR, safe_name)
 
-                if keep_videos_all or test_failed:
+                if KEEP_VIDEOS or test_failed:
                     # move the produced video to a nicer file name
                     try:
                         # If dest exists, overwrite it
@@ -108,16 +118,6 @@ def page(request):
                 browser.close()
             except Exception:
                 pass
-
-
-# If you installed python-dotenv for local convenience, auto-load .env (safe because .env is in .gitignore)
-try:
-    from dotenv import load_dotenv
-    # load .env from repo root if present (no-op if not)
-    load_dotenv()
-except Exception:
-    # dotenv not installed or failed — that's fine; we'll rely on env vars
-    pass
 
 @pytest.fixture(scope="session")
 def credentials():

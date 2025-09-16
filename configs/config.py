@@ -1,5 +1,14 @@
 import os
 
+# Try to load a local .env automatically for convenience in dev.
+# This ensures environment variables from .env are available when this module is imported.
+try:
+    from dotenv import load_dotenv  # python-dotenv
+    load_dotenv()  # loads .env from repo root if present
+except Exception:
+    # python-dotenv not installed or failed; continue and rely on real env vars
+    pass
+
 # Base URL of the site under test
 BASE_URL = os.getenv("BASE_URL", "https://www.saucedemo.com/")
 
@@ -17,3 +26,21 @@ except ValueError:
 
 # Report path used by pytest (pytest.ini will reference this path)
 REPORT_PATH = os.getenv("REPORT_PATH", "artifacts/report.html")
+
+# Video recording controls
+# KEEP_VIDEOS: if true, keep videos for all tests; otherwise keep only failed tests
+KEEP_VIDEOS = os.getenv("KEEP_VIDEOS", "false").lower() in ("1", "true", "yes")
+
+# Default directory where Playwright writes videos (overridable)
+VIDEO_DIR = os.getenv("VIDEO_DIR", "artifacts/videos")
+
+# Default recorded video size (width x height)
+try:
+    VIDEO_WIDTH = int(os.getenv("VIDEO_WIDTH", "1280"))
+except ValueError:
+    VIDEO_WIDTH = 1280
+
+try:
+    VIDEO_HEIGHT = int(os.getenv("VIDEO_HEIGHT", "720"))
+except ValueError:
+    VIDEO_HEIGHT = 720
