@@ -4,12 +4,11 @@ from pages.cart_page import CartPage
 from pages.checkout_page import CheckoutPage
 from model.user import User
 
-def test_add_item_and_checkout(page):
+def test_add_item_and_checkout(page, credentials):
     # login
-    user = User(username="standard_user", password="secret_sauce")
     login = LoginPage(page)
     login.goto()
-    login.login(user.username, user.password)
+    login.login(credentials.username, credentials.password)
 
     # inventory
     inv = InventoryPage(page)
