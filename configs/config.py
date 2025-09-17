@@ -27,6 +27,7 @@ except ValueError:
 # Report path used by pytest (pytest.ini will reference this path)
 REPORT_PATH = os.getenv("REPORT_PATH", "artifacts/report.html")
 
+
 # Video recording controls
 # KEEP_VIDEOS: if true, keep videos for all tests; otherwise keep only failed tests
 KEEP_VIDEOS = os.getenv("KEEP_VIDEOS", "false").lower() in ("1", "true", "yes")
@@ -44,3 +45,15 @@ try:
     VIDEO_HEIGHT = int(os.getenv("VIDEO_HEIGHT", "720"))
 except ValueError:
     VIDEO_HEIGHT = 720
+
+
+# Tracing controls (Playwright trace)
+# KEEP_TRACES: if true, keep traces for all runs; otherwise keep only failed tests
+KEEP_TRACES = os.getenv("KEEP_TRACES", "false").lower() in ("1", "true", "yes")
+
+# Directory to store trace zip files
+TRACE_DIR = os.getenv("TRACE_DIR", "artifacts/traces")
+
+# Whether to capture snapshots & screenshots in the trace (both recommended)
+TRACE_SNAPSHOTS = os.getenv("TRACE_SNAPSHOTS", "true").lower() in ("1", "true", "yes")
+TRACE_SCREENSHOTS = os.getenv("TRACE_SCREENSHOTS", "true").lower() in ("1", "true", "yes")

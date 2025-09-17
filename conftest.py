@@ -3,18 +3,34 @@ import os
 import re
 import shutil
 from playwright.sync_api import sync_playwright
-from configs.config import BROWSER, HEADED, SLOW_MO, KEEP_VIDEOS, VIDEO_DIR, VIDEO_WIDTH, VIDEO_HEIGHT
+# from configs.config import BROWSER, HEADED, SLOW_MO, KEEP_VIDEOS, VIDEO_DIR, VIDEO_WIDTH, VIDEO_HEIGHT
 from model.user import User
 
 
-# If you installed python-dotenv for local convenience, auto-load .env (safe because .env is in .gitignore)
+# Try to import centralized config values, but fall back to safe defaults
 try:
-    from dotenv import load_dotenv
-    # load .env from repo root if present (no-op if not)
-    load_dotenv()
+    from configs import config as cfg
 except Exception:
-    # dotenv not installed or failed — that's fine; we'll rely on env vars
-    pass
+    cfg = None
+
+# helper to get attribute from config with fallback
+def _cfg(attr, default):
+    if cfg is None:
+        return default
+    return getattr(cfg, attr, default)
+
+BROWSER = _cfg("BROWSER", "chromium")
+HEADED = _cfg("HEADED", True)
+SLOW_MO = _cfg("SLOW_MO", 0)
+KEEP_VIDEOS = _cfg("KEEP_VIDEOS", False)
+VIDEO_DIR = _cfg("VIDEO_DIR", "artifacts/videos")
+VIDEO_WIDTH = _cfg("VIDEO_WIDTH", 1280)
+VIDEO_HEIGHT = _cfg("VIDEO_HEIGHT", 720)
+
+KEEP_TRACES = _cfg("KEEP_TRACES", False)
+TRACE_DIR = _cfg("TRACE_DIR", "artifacts/traces")
+TRACE_SNAPSHOTS = _cfg("TRACE_SNAPSHOTS", True)
+TRACE_SCREENSHOTS = _cfg("TRACE_SCREENSHOTS", True)
 
 
 def _safe_test_name(nodeid: str) -> str:
@@ -29,85 +45,114 @@ def _safe_test_name(nodeid: str) -> str:
 def pytest_runtest_makereport(item, call):
     outcome = yield
     rep = outcome.get_result()
-    # attach the report object to the test item for later access
     setattr(item, "rep_" + rep.when, rep)
 
 
 @pytest.fixture(scope="function")
 def page(request):
     """
-    Playwright page fixture that records video to VIDEO_DIR.
+    Playwright page fixture that records video and records tracing.
 
-    Behavior:
-      - by default keeps videos only for failed tests (KEEP_VIDEOS=False)
-      - set KEEP_VIDEOS=true in .env or env to keep videos for all tests
-      - set VIDEO_DIR to change the directory (default: artifacts/videos)
-      - video size controlled by VIDEO_WIDTH and VIDEO_HEIGHT
+    Traces are saved under TRACE_DIR as .zip files. By default we keep traces only for failed tests;
+    set KEEP_TRACES=true to retain them for all tests.
     """
     os.makedirs(VIDEO_DIR, exist_ok=True)
+    os.makedirs(TRACE_DIR, exist_ok=True)
 
     with sync_playwright() as p:
         browser_launcher = getattr(p, BROWSER)
         browser = browser_launcher.launch(headless=not HEADED, slow_mo=SLOW_MO)
-        # instruct Playwright to store per-page video in VIDEO_DIR
+
+        # create context with video recording
         context = browser.new_context(
             record_video_dir=VIDEO_DIR,
-            record_video_size={"width": VIDEO_WIDTH, "height": VIDEO_HEIGHT},
+            record_video_size={"width": int(VIDEO_WIDTH), "height": int(VIDEO_HEIGHT)},
         )
+
+        # start tracing with snapshots/screenshots/sources according to config
+        try:
+            context.tracing.start(
+                screenshots=bool(TRACE_SCREENSHOTS),
+                snapshots=bool(TRACE_SNAPSHOTS),
+                sources=True,
+            )
+        except Exception:
+            # If tracing is not supported or fails for some reason, continue without crashing
+            pass
+
         page = context.new_page()
 
         yield page
 
-        # ---- teardown: flush & handle video ----
+        # ---- teardown: flush & handle trace + video ----
         try:
-            # Close the page to flush the video file
+            # Close the page to flush video
             try:
                 page.close()
             except Exception:
                 pass
 
-            # Attempt to retrieve the recorded video path (Playwright provides this)
+            # --- STOP TRACE (write to zip) ---
+            trace_path = None
+            try:
+                safe_name = _safe_test_name(request.node.nodeid)
+                tmp_trace = os.path.join(TRACE_DIR, safe_name + ".zip")
+                # Stop tracing and write to the specified file
+                try:
+                    context.tracing.stop(path=tmp_trace)
+                    trace_path = tmp_trace
+                except Exception:
+                    # some Playwright versions might require a different call; ignore if stop fails
+                    trace_path = None
+            except Exception:
+                trace_path = None
+
+            # --- HANDLE VIDEO (existing logic) ---
             video_path = None
             try:
                 vid = page.video
                 if vid:
-                    # .path() returns the path to the recorded webm file
                     video_path = vid.path()
             except Exception:
                 video_path = None
 
-            # Decide whether to keep the video based on test result or env override
             test_failed = getattr(request.node, "rep_call", None) and request.node.rep_call.failed
 
-            if video_path and os.path.exists(video_path):
-                safe_name = _safe_test_name(request.node.nodeid) + ".webm"
-                dest = os.path.join(VIDEO_DIR, safe_name)
-
-                if KEEP_VIDEOS or test_failed:
-                    # move the produced video to a nicer file name
+            # Keep or delete trace
+            if trace_path and os.path.exists(trace_path):
+                if KEEP_TRACES or test_failed:
+                    # keep the trace file (already written)
+                    pass
+                else:
+                    # delete the trace if the test passed and we're not keeping
                     try:
-                        # If dest exists, overwrite it
-                        if os.path.exists(dest):
-                            os.remove(dest)
-                        shutil.move(video_path, dest)
+                        os.remove(trace_path)
                     except Exception:
-                        # if move fails, leave the original file
+                        pass
+
+            # Keep or delete video
+            if video_path and os.path.exists(video_path):
+                safe_vid_dest = os.path.join(VIDEO_DIR, _safe_test_name(request.node.nodeid) + ".webm")
+                if KEEP_VIDEOS or test_failed:
+                    try:
+                        if os.path.exists(safe_vid_dest):
+                            os.remove(safe_vid_dest)
+                        shutil.move(video_path, safe_vid_dest)
+                    except Exception:
                         pass
                 else:
-                    # test passed and KEEP_VIDEOS not set -> remove temporary video to save space
                     try:
                         os.remove(video_path)
                     except Exception:
                         pass
 
-                # Attempt to remove the parent directory if it's empty (Playwright places the file in a directory)
-                try:
-                    parent = os.path.dirname(video_path)
-                    if parent and os.path.isdir(parent):
-                        os.rmdir(parent)
-                except Exception:
-                    pass
-
+            # Cleanup any empty Playwright-produced directories if necessary
+            try:
+                parent_v = os.path.dirname(video_path) if video_path else None
+                if parent_v and os.path.isdir(parent_v):
+                    os.rmdir(parent_v)
+            except Exception:
+                pass
         finally:
             # close context and browser
             try:
@@ -118,6 +163,7 @@ def page(request):
                 browser.close()
             except Exception:
                 pass
+
 
 @pytest.fixture(scope="session")
 def credentials():
