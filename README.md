@@ -36,5 +36,3 @@ python -m playwright show-trace artifacts/traces/<your-trace-file>.zip
 
 To view the last trace:
 ls -1 artifacts/traces/*.zip | tail -n1 | xargs playwright show-trace
-
-
