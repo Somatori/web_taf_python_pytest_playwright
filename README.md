@@ -1,6 +1,16 @@
-# e2e_tests - Playwright + Pytest TAF
+A small, generic end-to-end Test Automation Framework (TAF) for web UI testing using **Python**, **pytest**, and **Playwright (sync API)**.  
+The project implements the **Page Object Model (POM)** and is designed to be easy to use, extend and run locally. 
 
-#### Run tests locally
+**KEY POINTS / FEATURES**
+- Language: **Python**
+- Test runner: **pytest**
+- Browser automation: **Playwright (Chromium only, sync API)**
+- Design: **Page Object** Model (`pages/`), simple dataclasses in `model/`
+- Headed mode by default (can be toggled to headless)
+- Per-test isolation using fresh browser contexts (fast and independent tests)
+- Video recording and Playwright **tracing** support (kept on failures by default)
+- HTML test report generated at `artifacts/report.html`
+- No credentials stored in source — uses environment variables / `.env` for local convenience
 
 ## Activate venv:
 source .venv/bin/activate
