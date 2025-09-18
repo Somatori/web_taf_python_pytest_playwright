@@ -30,14 +30,14 @@ export SLOW_MO=50
 pytest tests/test_login.py -q
 
 ## Report:
-HTML report is generated at artifacts/report.html (pytest.ini sets this).
+HTML report is generated at `artifacts/report.html` (`pytest.ini` sets this).
 
 ## Record video:
-Video is generated at artifacts/videos if the test is failed (by default).
-Set env KEEP_VIDEOS=true to keep videos for all tests.
+Video is generated at `artifacts/videos` if the test is failed (by default).
+Set env `KEEP_VIDEOS=true` to keep videos for all tests.
 
 ## Trace tests
-Tracing is generated at artifacts/traces if the test is failed (by default).
+Tracing is generated at `artifacts/traces` if the test is failed (by default).
 
 To view the trace run:
 playwright show-trace artifacts/traces/<your-trace-file>.zip
