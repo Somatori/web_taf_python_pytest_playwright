@@ -49,7 +49,7 @@ jobs:
         run: |
           # ensure artifacts directory exists
           mkdir -p artifacts
-          pytest --maxfail=1 --disable-warnings --html=artifacts/report.html --self-contained-html
+          pytest --disable-warnings --html=artifacts/report.html --self-contained-html
 
       - name: Upload HTML report
         if: always()
