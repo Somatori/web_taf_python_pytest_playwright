@@ -1,0 +1,73 @@
+name: CI - pytest Playwright
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: |
+          # install chromium browser used by tests
+          python -m playwright install chromium
+
+      - name: Run tests
+        env:
+          # run headless in CI; credentials must be set in repo secrets
+          HEADED: 'false'
+          # If your tests require SAUCE_USERNAME/SAUCE_PASSWORD, set them in repo Secrets
+          SAUCE_USERNAME: ${{ secrets.SAUCE_USERNAME }}
+          SAUCE_PASSWORD: ${{ secrets.SAUCE_PASSWORD }}
+        run: |
+          # ensure artifacts directory exists
+          mkdir -p artifacts
+          pytest --maxfail=1 --disable-warnings --html=artifacts/report.html --self-contained-html
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report
+          path: artifacts/report.html
+
+      - name: Upload videos (if any)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: videos
+          path: artifacts/videos
+
+      - name: Upload traces (if any)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: traces
+          path: artifacts/traces
