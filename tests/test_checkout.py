@@ -29,4 +29,4 @@ def test_add_item_and_checkout(page, credentials):
     checkout.finish_checkout()
 
     # verify completion
-    assert checkout.is_checkout_complete(), "Checkout should complete and show confirmation"
+    assert checkout1.is_checkout_complete(), "Checkout should complete and show confirmation"
