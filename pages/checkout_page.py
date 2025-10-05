@@ -1,24 +1,41 @@
-from .base_page import BasePage
+from pages.base_page import BasePage
 
-class CheckoutPage(BasePage):
-    # step one (information)
-    FIRST_NAME = "input#first-name"
-    LAST_NAME = "input#last-name"
-    POSTAL_CODE = "input#postal-code"
-    CONTINUE_BUTTON = 'input[data-test="continue"]'
 
-    # overview / finish
-    FINISH_BUTTON = 'button[data-test="finish"]'
-    COMPLETE_HEADER = ".complete-header"
+class InventoryPage(BasePage):
+    def product_add_button(self, product_id: str):
+        return self.page.locator(f"[data-test='add-to-cart-{product_id}']")
 
-    def enter_customer_info(self, first_name: str, last_name: str, postal_code: str):
-        self.fill(self.FIRST_NAME, first_name)
-        self.fill(self.LAST_NAME, last_name)
-        self.fill(self.POSTAL_CODE, postal_code)
-        self.click(self.CONTINUE_BUTTON)
+    def cart_button(self):
+        return self.page.locator(".shopping_cart_link")
 
-    def finish_checkout(self):
-        self.click(self.FINISH_BUTTON)
+    def inventory_list(self):
+        return self.page.locator(".inventory_list")
 
-    def is_checkout_complete(self) -> bool:
-        return self.is_visible(self.COMPLETE_HEADER)
+
+class CartPage(BasePage):
+    def checkout_button(self):
+        return self.page.locator("[data-test='checkout']")
+
+
+class CheckoutYourInformationPage(BasePage):
+    def first_name_input(self):
+        return self.page.locator("[data-test='firstName']")
+
+    def last_name_input(self):
+        return self.page.locator("[data-test='lastName']")
+
+    def postal_code_input(self):
+        return self.page.locator("[data-test='postalCode']")
+
+    def continue_button(self):
+        return self.page.locator("[data-test='continue']")
+
+
+class CheckoutOverviewPage(BasePage):
+    def finish_button(self):
+        return self.page.locator("[data-test='finish']")
+
+
+class CheckoutCompletePage(BasePage):
+    def complete_header(self):
+        return self.page.locator(".complete-header")

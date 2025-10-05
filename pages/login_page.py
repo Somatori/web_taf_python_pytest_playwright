@@ -1,20 +1,24 @@
-from .base_page import BasePage
+from pages.base_page import BasePage
 from configs.config import BASE_URL
 
+
 class LoginPage(BasePage):
-    # selectors
-    USERNAME_INPUT = "input#user-name"
-    PASSWORD_INPUT = "input#password"
-    LOGIN_BUTTON = "input#login-button"
-    ERROR_MESSAGE = "h3[data-test='error']"
+    # Locator properties (return fresh Locator on each call)
+    def username_input(self):
+        return self.page.locator("input#user-name")
+
+    def password_input(self):
+        return self.page.locator("input#password")
+
+    def login_button(self):
+        return self.page.locator("input#login-button")
 
     def goto(self):
-        super().goto(BASE_URL)
+        # use configured BASE_URL
+        self.page.goto(BASE_URL)
 
     def login(self, username: str, password: str):
-        self.fill(self.USERNAME_INPUT, username)
-        self.fill(self.PASSWORD_INPUT, password)
-        self.click(self.LOGIN_BUTTON)
-
-    def get_error_text(self) -> str | None:
-        return self.get_text(self.ERROR_MESSAGE)
+        # uses direct locators to keep things explicit & readable
+        self.fill(self.username_input(), username)
+        self.fill(self.password_input(), password)
+        self.click(self.login_button())

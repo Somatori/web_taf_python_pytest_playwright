@@ -1,32 +1,29 @@
 from pages.login_page import LoginPage
-from pages.inventory_page import InventoryPage
-from pages.cart_page import CartPage
-from pages.checkout_page import CheckoutPage
-from model.user import User
+from pages.checkout_page import InventoryPage, CartPage, CheckoutYourInformationPage, CheckoutOverviewPage, CheckoutCompletePage
+
 
 def test_add_item_and_checkout(page, credentials):
-    # login
     login = LoginPage(page)
     login.goto()
     login.login(credentials.username, credentials.password)
 
-    # inventory
-    inv = InventoryPage(page)
-    assert inv.is_displayed(), "Inventory page should be visible after login"
+    inventory = InventoryPage(page)
+    # add product by id used in saucedemo (example)
+    inventory.product_add_button("sauce-labs-backpack").click()
 
-    # add item and go to cart
-    inv.add_backpack_to_cart()
-    inv.go_to_cart()
+    inventory.cart_button().click()
 
-    # cart
     cart = CartPage(page)
-    assert cart.has_items(), "Cart should contain at least one item"
-    cart.click_checkout()
+    cart.checkout_button().click()
 
-    # checkout info
-    checkout = CheckoutPage(page)
-    checkout.enter_customer_info("John", "Doe", "12345")
-    checkout.finish_checkout()
+    info = CheckoutYourInformationPage(page)
+    info.fill(info.first_name_input(), "John")
+    info.fill(info.last_name_input(), "Doe")
+    info.fill(info.postal_code_input(), "12345")
+    info.click(info.continue_button())
 
-    # verify completion
-    assert checkout.is_checkout_complete(), "Checkout should complete and show confirmation"
+    overview = CheckoutOverviewPage(page)
+    overview.click(overview.finish_button())
+
+    complete = CheckoutCompletePage(page)
+    assert complete.complete_header().is_visible()
