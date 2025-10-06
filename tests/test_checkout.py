@@ -10,23 +10,20 @@ def test_add_item_and_checkout(page, credentials):
     login.login(credentials.username, credentials.password)
 
     inventory = InventoryPage(page)
-    # add product by id used in saucedemo (example)
-    inventory.product_add_button("sauce-labs-backpack").click()
+    inventory.add_product_to_cart("sauce-labs-backpack")
+    assert inventory.product_is_added("sauce-labs-backpack")
 
-    # open cart
-    inventory.cart_button().click()
+    inventory.open_cart()
 
     cart = CartPage(page)
-    cart.checkout_button().click()
+    assert cart.item_count() > 0
+    cart.go_to_checkout()
 
     info = CheckoutYourInformationPage(page)
-    info.first_name_input().fill("John")
-    info.last_name_input().fill("Doe")
-    info.postal_code_input().fill("12345")
-    info.continue_button().click()
+    info.fill_info_and_continue("John", "Doe", "12345")
 
     overview = CheckoutOverviewPage(page)
-    overview.finish_button().click()
+    overview.finish_checkout()
 
     complete = CheckoutCompletePage(page)
-    assert complete.complete_header().is_visible()
+    assert complete.is_complete()
