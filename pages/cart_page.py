@@ -1,11 +1,11 @@
-from pages.base_page import BasePage
+from playwright.sync_api import Page
 
 
-class CartPage(BasePage):
-    """Cart page with items added to cart."""
+class CartPage:
+    def __init__(self, page: Page):
+        self.page = page
 
     def cart_items(self):
-        # each cart item container
         return self.page.locator(".cart_item")
 
     def cart_item_by_id(self, product_id: str):
@@ -26,7 +26,7 @@ class CartPage(BasePage):
         except Exception:
             return 0
 
-    # convenience high-level actions
+    # high-level actions
     def remove_product(self, product_id: str):
         self.remove_item_button(product_id).click()
 

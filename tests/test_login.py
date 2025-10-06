@@ -1,5 +1,5 @@
 from pages.login_page import LoginPage
-from pages.checkout_page import InventoryPage
+from pages.inventory_page import InventoryPage
 
 
 def test_standard_user_can_login(page, credentials):
