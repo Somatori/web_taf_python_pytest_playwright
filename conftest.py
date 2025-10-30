@@ -32,6 +32,7 @@ TRACE_SNAPSHOTS = _cfg("TRACE_SNAPSHOTS", True)
 TRACE_SCREENSHOTS = _cfg("TRACE_SCREENSHOTS", True)
 
 
+# Create a filesystem-safe trace/video filename
 def _safe_test_name(nodeid: str) -> str:
     name = nodeid.replace("::", "__")
     name = re.sub(r'[^0-9A-Za-z._-]+', '_', name)
@@ -61,7 +62,7 @@ def browser(playwright_session):
         pass
 
 
-# Ensure pytest attaches test reports to node for later inspection in fixtures
+# Ensure pytest attaches test reports (traces/videos) to node for later inspection in fixtures
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     outcome = yield

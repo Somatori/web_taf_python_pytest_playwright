@@ -25,7 +25,7 @@ except ValueError:
     SLOW_MO = 0
 
 # Report path used by pytest (pytest.ini will reference this path)
-REPORT_PATH = os.getenv("REPORT_PATH", "artifacts/report.html")
+# REPORT_PATH = os.getenv("REPORT_PATH", "artifacts/report.html")
 
 
 # Video recording controls
