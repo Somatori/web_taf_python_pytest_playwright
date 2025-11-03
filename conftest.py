@@ -19,12 +19,17 @@ def _cfg(attr, default):
 
 # Config values (with sensible fallbacks)
 BROWSER = _cfg("BROWSER", "chromium")
+BROWSER_WIDTH = _cfg("BROWSER_WIDTH", 1280)
+BROWSER_HEIGHT = _cfg("BROWSER_HEIGHT", 720)
+
 HEADED = _cfg("HEADED", True)
 SLOW_MO = _cfg("SLOW_MO", 0)
 KEEP_VIDEOS = _cfg("KEEP_VIDEOS", False)
 VIDEO_DIR = _cfg("VIDEO_DIR", "artifacts/videos")
-VIDEO_WIDTH = _cfg("VIDEO_WIDTH", 1280)
-VIDEO_HEIGHT = _cfg("VIDEO_HEIGHT", 720)
+
+# Video size defaults to browser size for consistency
+VIDEO_WIDTH = _cfg("VIDEO_WIDTH", BROWSER_WIDTH) 
+VIDEO_HEIGHT = _cfg("VIDEO_HEIGHT", BROWSER_HEIGHT)
 
 KEEP_TRACES = _cfg("KEEP_TRACES", False)
 TRACE_DIR = _cfg("TRACE_DIR", "artifacts/traces")
@@ -54,7 +59,22 @@ def playwright_session():
 @pytest.fixture(scope="session")
 def browser(playwright_session):
     browser_launcher = getattr(playwright_session, BROWSER)
-    browser = browser_launcher.launch(headless=not HEADED, slow_mo=SLOW_MO)
+
+    # Build launch args (set native window size in headed mode)
+    launch_args = []
+    try:
+        if HEADED:
+            launch_args.append(f"--window-size={int(BROWSER_WIDTH)},{int(BROWSER_HEIGHT)}")
+    except Exception:
+        # fallback: ignore malformed values
+        launch_args = []
+
+    # Pass args only if non-empty (Playwright accepts None)
+    browser = browser_launcher.launch(
+        headless=not HEADED,
+        slow_mo=SLOW_MO,
+        args=launch_args or None,
+    )
     yield browser
     try:
         browser.close()
@@ -85,7 +105,9 @@ def page(request, browser):
     os.makedirs(TRACE_DIR, exist_ok=True)
 
     # Create a fresh context for this test (isolation)
+    # set viewport to the configured browser viewport for deterministic layout
     context = browser.new_context(
+        viewport={"width": int(BROWSER_WIDTH), "height": int(BROWSER_HEIGHT)},
         record_video_dir=VIDEO_DIR,
         record_video_size={"width": int(VIDEO_WIDTH), "height": int(VIDEO_HEIGHT)},
     )

@@ -24,10 +24,6 @@ try:
 except ValueError:
     SLOW_MO = 0
 
-# Report path used by pytest (pytest.ini will reference this path)
-# REPORT_PATH = os.getenv("REPORT_PATH", "artifacts/report.html")
-
-
 # Video recording controls
 # KEEP_VIDEOS: if true, keep videos for all tests; otherwise keep only failed tests
 KEEP_VIDEOS = os.getenv("KEEP_VIDEOS", "false").lower() in ("1", "true", "yes")
@@ -35,17 +31,27 @@ KEEP_VIDEOS = os.getenv("KEEP_VIDEOS", "false").lower() in ("1", "true", "yes")
 # Default directory where Playwright writes videos (overridable)
 VIDEO_DIR = os.getenv("VIDEO_DIR", "artifacts/videos")
 
-# Default recorded video size (width x height)
+# Browser viewport / window size (width x height)
 try:
-    VIDEO_WIDTH = int(os.getenv("VIDEO_WIDTH", "1280"))
+    BROWSER_WIDTH = int(os.getenv("BROWSER_WIDTH", "1280"))
 except ValueError:
-    VIDEO_WIDTH = 1280
+    BROWSER_WIDTH = 1280
 
 try:
-    VIDEO_HEIGHT = int(os.getenv("VIDEO_HEIGHT", "720"))
+    BROWSER_HEIGHT = int(os.getenv("BROWSER_HEIGHT", "720"))
 except ValueError:
-    VIDEO_HEIGHT = 720
+    BROWSER_HEIGHT = 720
 
+# Default recorded video size (defaults to video size for consistency)
+try:
+    VIDEO_WIDTH = int(os.getenv("VIDEO_WIDTH", str(BROWSER_WIDTH)))
+except ValueError:
+    VIDEO_WIDTH = BROWSER_WIDTH
+
+try:
+    VIDEO_HEIGHT = int(os.getenv("VIDEO_HEIGHT", str(BROWSER_HEIGHT)))
+except ValueError:
+    VIDEO_HEIGHT = BROWSER_HEIGHT
 
 # Tracing controls (Playwright trace)
 # KEEP_TRACES: if true, keep traces for all runs; otherwise keep only failed tests
