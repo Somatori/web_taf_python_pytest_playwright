@@ -94,3 +94,9 @@ import pytest
 def test_example(page, credentials):
     ...
 ```
+
+Running tests by a marker:
+
+```bash
+pytest -q -m smoke
+```
