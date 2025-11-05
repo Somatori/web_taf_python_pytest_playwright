@@ -1,13 +1,14 @@
-name: CI - pytest Playwright
+name: CI - pytest Playwright + Allure
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 permissions:
   contents: read
+  pages: write
 
 jobs:
   test:
@@ -19,7 +20,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.13'
+          python-version: "3.13"
 
       - name: Cache pip
         uses: actions/cache@v4
@@ -36,38 +37,59 @@ jobs:
 
       - name: Install Playwright browsers
         run: |
-          # install chromium browser used by tests
           python -m playwright install chromium
 
-      - name: Run tests
+      - name: Run tests (produce Allure results)
         env:
-          # run headless in CI; credentials must be set in repo secrets
-          HEADED: 'false'
-          # If your tests require SAUCE_USERNAME/SAUCE_PASSWORD, set them in repo Secrets
+          HEADED: "false"
           SAUCE_USERNAME: ${{ secrets.SAUCE_USERNAME }}
           SAUCE_PASSWORD: ${{ secrets.SAUCE_PASSWORD }}
         run: |
-          # ensure artifacts directory exists
           mkdir -p artifacts
-          pytest --disable-warnings --html=artifacts/report.html --self-contained-html
+          # run pytest and produce Allure results; pytest.ini may already add --alluredir, but pass explicitly to be safe
+          pytest -q --alluredir=artifacts/allure-results || true
+          # NOTE: we want to continue even if tests fail so we can generate/upload artifacts
 
-      - name: Upload HTML report
+      - name: Generate Allure report (Docker)
+        # use a container that already contains Allure CLI (avoids installing Java)
+        run: |
+          mkdir -p artifacts/allure-report
+          docker run --rm \
+            -v "${{ github.workspace }}/artifacts/allure-results:/app/allure-results" \
+            -v "${{ github.workspace }}/artifacts/allure-report:/app/allure-report" \
+            frankescobar/allure-cli:latest \
+            generate /app/allure-results -o /app/allure-report --clean
+
+      # Upload the generated Allure report as a zip artifact (downloadable per run)
+      - name: Upload Allure report artifact (zip)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pytest-report
-          path: artifacts/report.html
+          name: allure-report-${{ github.run_id }}
+          path: artifacts/allure-report
 
+      # Upload videos & traces (so you can download them separately if needed)
       - name: Upload videos (if any)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: videos
+          name: videos-${{ github.run_id }}
           path: artifacts/videos
 
       - name: Upload traces (if any)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: traces
+          name: traces-${{ github.run_id }}
           path: artifacts/traces
+
+      # Publish to GitHub Pages: only do this on pushes to main (not on PRs)
+      - name: Prepare artifact for Pages (upload-pages-artifact)
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v1
+        with:
+          path: ./artifacts/allure-report
+
+      - name: Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/main'
+        uses: actions/deploy-pages@v1
