@@ -2,6 +2,8 @@ import pytest
 import os
 import re
 import shutil
+import subprocess
+import time
 from playwright.sync_api import sync_playwright
 from model.user import User
 
@@ -42,6 +44,26 @@ def _safe_test_name(nodeid: str) -> str:
     name = nodeid.replace("::", "__")
     name = re.sub(r'[^0-9A-Za-z._-]+', '_', name)
     return name
+
+
+def pytest_sessionstart(session):
+    """
+    Clean up previous Allure raw results before the test session starts.
+    This removes the 'artifacts/allure-results' directory if present and
+    creates an empty directory so the current run starts fresh.
+    """
+    try:
+        results_dir = os.path.join(os.getcwd(), "artifacts", "allure-results")
+        if os.path.isdir(results_dir):
+            try:
+                shutil.rmtree(results_dir)
+                print(f"Removed existing Allure results directory: {results_dir}")
+            except Exception as e:
+                print(f"Warning: failed to remove {results_dir}: {e}")
+        # recreate empty directory so later steps can write into it
+        os.makedirs(results_dir, exist_ok=True)
+    except Exception as e:
+        print("Warning: pytest_sessionstart cleanup failed:", e)
 
 
 # Start Playwright once per session
@@ -105,7 +127,6 @@ def page(request, browser):
     os.makedirs(TRACE_DIR, exist_ok=True)
 
     # Create a fresh context for this test (isolation)
-    # set viewport to the configured browser viewport for deterministic layout
     context = browser.new_context(
         viewport={"width": int(BROWSER_WIDTH), "height": int(BROWSER_HEIGHT)},
         record_video_dir=VIDEO_DIR,
@@ -127,15 +148,23 @@ def page(request, browser):
 
     yield page
 
-    # Teardown: stop tracing, handle trace/video retention, then close context
+    # Teardown: stop tracing, handle trace/video retention, attach to Allure if requested, then close context
     try:
-        # close page to flush video
+        # Attempt guarded import of allure for attaching artifacts (if installed)
+        try:
+            import allure
+            from allure_commons.types import AttachmentType
+        except Exception:
+            allure = None
+            AttachmentType = None
+
+        # close page to flush page-level resources
         try:
             page.close()
         except Exception:
             pass
 
-        # stop tracing and write zip file
+        # stop tracing and write zip file (if tracing was started)
         trace_path = None
         try:
             safe_name = _safe_test_name(request.node.nodeid)
@@ -148,7 +177,8 @@ def page(request, browser):
         except Exception:
             trace_path = None
 
-        # video handling: Playwright stores a video file per-page in a temp folder
+        # video handling: get the video file path (Playwright gives us a path,
+        # but the file may be finalized only after context.close())
         video_path = None
         try:
             vid = page.video
@@ -157,12 +187,105 @@ def page(request, browser):
         except Exception:
             video_path = None
 
+        # compute test result (failed or not)
         test_failed = getattr(request.node, "rep_call", None) and request.node.rep_call.failed
+
+        # Now close the context — this is important: Playwright finalizes videos on context close
+        try:
+            context.close()
+        except Exception:
+            # If context.close fails, continue; we still try to attach/move files
+            pass
+
+        # Helper: wait for a file to become non-zero and stable for a short time
+        def _wait_for_file_stable(path, timeout_sec=10, stable_for=0.5):
+            """
+            Wait until `path` exists, its size > 0, and size doesn't change for `stable_for` seconds.
+            Returns True if file is stable and non-empty before timeout, False otherwise.
+            """
+            if not path:
+                return False
+            start = time.time()
+            last_size = -1
+            last_change_time = time.time()
+            while True:
+                try:
+                    st = os.stat(path)
+                    size = st.st_size
+                except Exception:
+                    size = -1
+
+                now = time.time()
+                if size > 0:
+                    if size != last_size:
+                        last_change_time = now
+                        last_size = size
+                    else:
+                        # size unchanged since last check
+                        if now - last_change_time >= stable_for:
+                            return True
+                # timeout
+                if now - start > timeout_sec:
+                    return size > 0
+                time.sleep(0.25)
+
+        # If there is a video path, wait until it's fully written (or timeout)
+        if video_path:
+            # If the video lives in a temporary folder Playwright created, it will be finalized after context.close()
+            ok = _wait_for_file_stable(video_path, timeout_sec=15, stable_for=0.5)
+            if not ok:
+                print(f"WARNING: video file {video_path} did not stabilize within timeout; proceeding anyway.")
+
+        # Best-effort attach: copy attachments into allure-results and then attach those copies.
+        if allure and test_failed:
+            allure_results_dir = os.getenv("ALLURE_RESULTS_DIR", "artifacts/allure-results")
+            os.makedirs(allure_results_dir, exist_ok=True)
+
+            def _copy_and_attach(src_path: str, dest_name: str, attach_name: str, mime_or_type):
+                try:
+                    if not src_path or not os.path.exists(src_path):
+                        print(f"DEBUG: source not found for attach: {src_path}")
+                        return False
+
+                    dest_path = os.path.join(allure_results_dir, dest_name)
+                    # copy the file into allure-results to make sure it's available to the reporter
+                    shutil.copy2(src_path, dest_path)
+                    print(f"DEBUG: copied {src_path} -> {dest_path}")
+
+                    try:
+                        if AttachmentType is not None and hasattr(AttachmentType, mime_or_type):
+                            atype = getattr(AttachmentType, mime_or_type)
+                            allure.attach.file(dest_path, name=attach_name, attachment_type=atype)
+                        else:
+                            fallback = "application/octet-stream"
+                            if mime_or_type.lower() == "webm":
+                                fallback = "video/webm"
+                            elif mime_or_type.lower() == "zip":
+                                fallback = "application/zip"
+                            allure.attach.file(dest_path, name=attach_name, attachment_type=fallback)
+                        print(f"DEBUG: attached {attach_name} -> {dest_path}")
+                        return True
+                    except Exception as e:
+                        print("DEBUG: allure.attach.file failed:", e)
+                        return False
+                except Exception as e:
+                    print("DEBUG: copy_and_attach failed:", e)
+                    return False
+
+            # Attach video
+            if video_path:
+                dest_video_name = f"{_safe_test_name(request.node.nodeid)}_video.webm"
+                _copy_and_attach(video_path, dest_video_name, "video", "WEBM")
+
+            # Attach trace
+            if trace_path:
+                dest_trace_name = f"{_safe_test_name(request.node.nodeid)}_trace.zip"
+                _copy_and_attach(trace_path, dest_trace_name, "trace", "ZIP")
 
         # Keep or delete trace
         if trace_path and os.path.exists(trace_path):
             if KEEP_TRACES or test_failed:
-                pass  # keep it as written
+                pass
             else:
                 try:
                     os.remove(trace_path)
@@ -189,15 +312,22 @@ def page(request, browser):
         try:
             parent_v = os.path.dirname(video_path) if video_path else None
             if parent_v and os.path.isdir(parent_v):
-                os.rmdir(parent_v)
+                # only attempt rmdir if directory empty
+                try:
+                    os.rmdir(parent_v)
+                except Exception:
+                    pass
         except Exception:
             pass
 
     finally:
+        # ensure context is closed (if not already)
         try:
+            # if context still open, close it (safe no-op if already closed)
             context.close()
         except Exception:
             pass
+
 
 
 @pytest.fixture(scope="session")
@@ -221,3 +351,96 @@ def credentials():
         )
 
     return User(username=username, password=password)
+
+
+# Optional: automatically generate Allure HTML after pytest run when requested.
+# Usage: set environment variable ALLURE_AUTO_GENERATE=1 before running pytest and ensure the 'allure' CLI is installed.
+def _wait_for_attachments_to_settle(allure_results_dir: str, videos_dir: str, max_wait_seconds: int = 10):
+    """
+    Wait until files in videos_dir / allure_results_dir have stable sizes or until timeout.
+    Returns True if we observed at least one non-empty attachment, False otherwise.
+    """
+    start = time.time()
+    seen_nonzero = False
+
+    # Track previous sizes to detect stability
+    prev_sizes = {}
+
+    while True:
+        any_changing = False
+        seen_nonzero = False
+
+        # Check video files (source)
+        for root_dir in (videos_dir, allure_results_dir):
+            if not os.path.isdir(root_dir):
+                continue
+            for fn in os.listdir(root_dir):
+                if fn.lower().endswith((".webm", ".mp4", ".zip")):
+                    path = os.path.join(root_dir, fn)
+                    try:
+                        st = os.stat(path)
+                        size = st.st_size
+                    except Exception:
+                        size = -1
+
+                    if size > 0:
+                        seen_nonzero = True
+
+                    prev = prev_sizes.get(path)
+                    if prev is None:
+                        prev_sizes[path] = size
+                        any_changing = True
+                    else:
+                        if size != prev:
+                            any_changing = True
+                            prev_sizes[path] = size
+
+        # If we've seen non-zero file(s) and no files are changing, consider settled
+        if seen_nonzero and not any_changing:
+            return True
+
+        # Timeout check
+        elapsed = time.time() - start
+        if elapsed >= max_wait_seconds:
+            # give up after timeout; return whether we saw anything non-zero at least once
+            return seen_nonzero
+
+        # Sleep briefly before next check
+        time.sleep(0.5)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """
+    If ALLURE_AUTO_GENERATE=1 and allure CLI is on PATH, generate the static HTML report
+    from the Allure results directory (default: artifacts/allure-results).
+
+    This version waits briefly for attachments to be copied/written before generating.
+    """
+    try:
+        auto = os.getenv("ALLURE_AUTO_GENERATE", "0").lower() in ("1", "true", "yes")
+        if not auto:
+            return
+
+        allure_cmd = shutil.which("allure")
+        if not allure_cmd:
+            print("ALLURE_AUTO_GENERATE is set but 'allure' CLI was not found in PATH. Skipping report generation.")
+            return
+
+        result_dir = os.getenv("ALLURE_RESULTS_DIR", "artifacts/allure-results")
+        videos_dir = os.getenv("VIDEO_DIR", "artifacts/videos")
+        report_dir = os.getenv("ALLURE_REPORT_DIR", "artifacts/allure-report")
+
+        # Wait for attachments to settle (so the generated report picks them up)
+        print(f" Allure auto-generation requested. Waiting up to 10s for attachments to settle...")
+        ok = _wait_for_attachments_to_settle(result_dir, videos_dir, max_wait_seconds=10)
+        if not ok:
+            print("Warning: no non-empty attachments detected or attachments still changing after timeout; proceeding to generate report anyway.")
+
+        print(f"Generating Allure report from {result_dir} -> {report_dir} ...")
+        try:
+            subprocess.run([allure_cmd, "generate", result_dir, "-o", report_dir, "--clean"], check=True)
+            print(f"Allure report generated: {report_dir}/index.html")
+        except subprocess.CalledProcessError as e:
+            print("Allure CLI failed to generate report:", e)
+    except Exception as e:
+        print("Unexpected error when trying to auto-generate Allure report:", e)

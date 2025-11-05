@@ -10,7 +10,7 @@ The project implements the **Page Object Model (POM)** and is designed to be eas
 - Headed mode by default (can be toggled to headless)
 - Per-test isolation using fresh browser contexts (fast and independent tests)
 - Video recording and Playwright **tracing** support (kept on failures by default)
-- HTML test report generated at `artifacts/report.html`
+- HTML test report generated (2 types of reports are available)
 - No credentials stored in source — uses environment variables / `.env` for local convenience
 
 ## Activate venv:
@@ -35,9 +35,33 @@ pytest tests/test_checkout.py -q
 export SLOW_MO=50
 pytest tests/test_login.py -q
 
-## Report:
+## Reports:
 
-HTML report is generated at `artifacts/report.html` (`pytest.ini` sets this).
+A simple HTML report is generated at `artifacts/report.html`.
+
+Running tests with report generation:
+
+```bash
+pytest -q --html=artifacts/report.html --self-contained-html
+```
+
+**Note:** this html-report can be generated only if tests are not run in parallel.
+
+## Reporting with Allure
+
+The **Allure** is used for rich HTML reports (attachments, history, etc).
+
+Running tests with report generation:
+
+```bash
+ALLURE_AUTO_GENERATE=1 pytest -q --alluredir=artifacts/allure-results
+```
+
+Opening the generated report:
+
+```bash
+allure open artifacts/allure-report
+```
 
 ## Record video:
 
@@ -49,12 +73,12 @@ Set env `KEEP_VIDEOS=true` to keep videos for all tests.
 Tracing is generated at `artifacts/traces` if the test is failed (by default).
 
 To view the trace run:
-playwright show-trace artifacts/traces/<your-trace-file>.zip
-OR
-python -m playwright show-trace artifacts/traces/<your-trace-file>.zip
 
-To view the last trace:
-ls -1 artifacts/traces/\*.zip | tail -n1 | xargs playwright show-trace
+```bash
+playwright show-trace artifacts/traces/<your-trace-file>.zip
+# or
+python -m playwright show-trace artifacts/traces/<your-trace-file>.zip
+```
 
 ## Continuous Integration (GitHub Actions)
 
