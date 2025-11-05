@@ -48,14 +48,26 @@ jobs:
           mkdir -p artifacts
           pytest -q --alluredir=artifacts/allure-results || true
 
-      - name: Generate Allure report (Docker)
+      - name: Set up Node.js (for allure-commandline install)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Install Java (OpenJDK 17)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openjdk-17-jre-headless
+          java -version
+
+      - name: Install Allure CLI via npm
+        run: |
+          npm install -g allure-commandline --unsafe-perm=true
+          allure --version
+
+      - name: Generate Allure report (local CLI)
         run: |
           mkdir -p artifacts/allure-report
-          docker run --rm \
-            -v "${{ github.workspace }}/artifacts/allure-results:/app/allure-results" \
-            -v "${{ github.workspace }}/artifacts/allure-report:/app/allure-report" \
-            frankescobar/allure-cli:latest \
-            generate /app/allure-results -o /app/allure-report --clean
+          allure generate artifacts/allure-results -o artifacts/allure-report --clean
 
       - name: Upload Allure report artifact (zip)
         if: always()
@@ -78,14 +90,12 @@ jobs:
           name: traces-${{ github.run_id }}
           path: artifacts/traces
 
-      # Prepare artifact for Pages (only on main)
       - name: Prepare Pages artifact
         if: github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./artifacts/allure-report
 
-      # Deploy to GitHub Pages (only on main)
       - name: Deploy to GitHub Pages
         if: github.ref == 'refs/heads/main'
         uses: actions/deploy-pages@v4
