@@ -46,12 +46,9 @@ jobs:
           SAUCE_PASSWORD: ${{ secrets.SAUCE_PASSWORD }}
         run: |
           mkdir -p artifacts
-          # run pytest and produce Allure results; pytest.ini may already add --alluredir, but pass explicitly to be safe
           pytest -q --alluredir=artifacts/allure-results || true
-          # NOTE: we want to continue even if tests fail so we can generate/upload artifacts
 
       - name: Generate Allure report (Docker)
-        # use a container that already contains Allure CLI (avoids installing Java)
         run: |
           mkdir -p artifacts/allure-report
           docker run --rm \
@@ -60,7 +57,6 @@ jobs:
             frankescobar/allure-cli:latest \
             generate /app/allure-results -o /app/allure-report --clean
 
-      # Upload the generated Allure report as a zip artifact (downloadable per run)
       - name: Upload Allure report artifact (zip)
         if: always()
         uses: actions/upload-artifact@v4
@@ -68,7 +64,6 @@ jobs:
           name: allure-report-${{ github.run_id }}
           path: artifacts/allure-report
 
-      # Upload videos & traces (so you can download them separately if needed)
       - name: Upload videos (if any)
         if: always()
         uses: actions/upload-artifact@v4
@@ -83,13 +78,14 @@ jobs:
           name: traces-${{ github.run_id }}
           path: artifacts/traces
 
-      # Publish to GitHub Pages: only do this on pushes to main (not on PRs)
-      - name: Prepare artifact for Pages (upload-pages-artifact)
+      # Prepare artifact for Pages (only on main)
+      - name: Prepare Pages artifact
         if: github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@v1
+        uses: actions/upload-pages-artifact@v3
         with:
           path: ./artifacts/allure-report
 
+      # Deploy to GitHub Pages (only on main)
       - name: Deploy to GitHub Pages
         if: github.ref == 'refs/heads/main'
-        uses: actions/deploy-pages@v1
+        uses: actions/deploy-pages@v4
