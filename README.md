@@ -92,8 +92,10 @@ This project uses [GitHub Actions](https://docs.github.com/en/actions) to run au
 ### CI Behavior
 
 - All tests are executed in CI (no fail-fast by default).
-- If a test fails, artifacts (videos, traces, HTML report) are available in the GitHub Actions run for debugging.
+- If a test fails, artifacts (videos, traces) are available in the GitHub Actions run for debugging.
 - Secrets (like `SAUCE_USERNAME` and `SAUCE_PASSWORD`) can be added to the repository’s **Settings > Secrets and variables > Actions** for secure usage in tests.
+- The Allure report is generates as an artifact.
+- The last Allure report is available here: https://somatori.github.io/web_taf_python_pytest_playwright/
 
 ### Local vs CI
 

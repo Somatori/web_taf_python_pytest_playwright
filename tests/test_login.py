@@ -10,5 +10,4 @@ def test_standard_user_can_login(page, credentials):
     login.login(credentials.username, credentials.password)
 
     inventory = InventoryPage(page)
-    # assert inventory.is_inventory_visible()
-    assert False
+    assert inventory.is_inventory_visible()
