@@ -1,0 +1,4 @@
+DEBUG: copied /home/runner/work/web_taf_python_pytest_playwright/web_taf_python_pytest_playwright/artifacts/videos/3548e7b533b9f14d20ca2045a4cd448f.webm -> artifacts/allure-results/tests_test_login.py__test_standard_user_can_login_video.webm
+DEBUG: attached video -> artifacts/allure-results/tests_test_login.py__test_standard_user_can_login_video.webm
+DEBUG: copied artifacts/traces/tests_test_login.py__test_standard_user_can_login.zip -> artifacts/allure-results/tests_test_login.py__test_standard_user_can_login_trace.zip
+DEBUG: attached trace -> artifacts/allure-results/tests_test_login.py__test_standard_user_can_login_trace.zip

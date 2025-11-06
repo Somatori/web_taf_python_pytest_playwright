@@ -1,0 +1,3 @@
+"DESCRIPTION","DURATION IN MS","NAME","PARENT SUITE","START TIME","STATUS","STOP TIME","SUB SUITE","SUITE","TEST CLASS","TEST METHOD"
+"","367","test_standard_user_can_login","tests","Thu Nov 06 03:54:17 UTC 2025","failed","Thu Nov 06 03:54:17 UTC 2025","","test_login","",""
+"","785","test_add_item_and_checkout","tests","Thu Nov 06 03:54:15 UTC 2025","passed","Thu Nov 06 03:54:16 UTC 2025","","test_checkout","",""
