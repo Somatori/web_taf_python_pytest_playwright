@@ -91,12 +91,11 @@ jobs:
           name: traces-${{ github.run_id }}
           path: artifacts/traces
 
-      - name: Prepare Pages artifact
+      # Deploy Allure report to gh-pages (only on pushes to main)
+      - name: Deploy Allure report to gh-pages
         if: github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@v3
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          path: ./artifacts/allure-report
-
-      - name: Deploy to GitHub Pages
-        if: github.ref == 'refs/heads/main'
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./artifacts/allure-report
+          publish_branch: gh-pages
