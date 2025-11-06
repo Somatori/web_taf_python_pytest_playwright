@@ -1,0 +1,4 @@
+DEBUG: copied /home/runner/work/web_taf_python_pytest_playwright/web_taf_python_pytest_playwright/artifacts/videos/gw0/7cb477c8be8477d70dff8aea27c0fb8b.webm -> artifacts/allure-results/tests_test_checkout.py__test_add_item_and_checkout_video.webm
+DEBUG: attached video -> artifacts/allure-results/tests_test_checkout.py__test_add_item_and_checkout_video.webm
+DEBUG: copied artifacts/traces/gw0/tests_test_checkout.py__test_add_item_and_checkout.zip -> artifacts/allure-results/tests_test_checkout.py__test_add_item_and_checkout_trace.zip
+DEBUG: attached trace -> artifacts/allure-results/tests_test_checkout.py__test_add_item_and_checkout_trace.zip
