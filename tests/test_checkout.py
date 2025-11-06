@@ -28,4 +28,5 @@ def test_add_item_and_checkout(page, credentials):
     overview.finish_checkout()
 
     complete = CheckoutCompletePage(page)
-    assert complete.is_complete()
+    # assert complete.is_complete()
+    assert False

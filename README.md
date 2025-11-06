@@ -12,28 +12,48 @@ The project implements the **Page Object Model (POM)** and is designed to be eas
 - Video recording and Playwright **tracing** support (kept on failures by default)
 - HTML test report generated (2 types of reports are available)
 - No credentials stored in source — uses environment variables / `.env` for local convenience
+- Running tests in parallel
+- Integration with CI/CD (**GitHub Actions**)
 
 ## Activate venv:
 
+```bash
 source .venv/bin/activate
+```
 
 ## Run the full suite (headed by default):
 
-pytest -q
+```bash
+pytest
+```
 
 ## Run headless:
 
+```bash
 export HEADED=false
-pytest -q
+pytest
+```
 
 ## Run a single test file:
 
-pytest tests/test_checkout.py -q
+```bash
+pytest tests/test_checkout.py
+```
 
 ## Enable slow-motion for debugging:
 
+```bash
 export SLOW_MO=50
-pytest tests/test_login.py -q
+pytest tests/test_login.py
+```
+
+## Running tests in parallel
+
+The `pytest-xdist` package is used to run tests in parallel (multiple worker processes).
+
+```bash
+pytest -n 2
+```
 
 ## Reports:
 
@@ -55,6 +75,8 @@ Running tests with report generation:
 
 ```bash
 ALLURE_AUTO_GENERATE=1 pytest -q --alluredir=artifacts/allure-results
+# or for running tests in parallel
+ALLURE_AUTO_GENERATE=1 pytest -q -n 2 --alluredir=artifacts/allure-results
 ```
 
 Opening the generated report:

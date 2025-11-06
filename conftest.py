@@ -23,18 +23,27 @@ def _cfg(attr, default):
 BROWSER = _cfg("BROWSER", "chromium")
 BROWSER_WIDTH = _cfg("BROWSER_WIDTH", 1280)
 BROWSER_HEIGHT = _cfg("BROWSER_HEIGHT", 720)
-
 HEADED = _cfg("HEADED", True)
 SLOW_MO = _cfg("SLOW_MO", 0)
 KEEP_VIDEOS = _cfg("KEEP_VIDEOS", False)
-VIDEO_DIR = _cfg("VIDEO_DIR", "artifacts/videos")
+
+# base directories (from config / env)
+BASE_VIDEO_DIR = _cfg("VIDEO_DIR", "artifacts/videos")
+BASE_TRACE_DIR = _cfg("TRACE_DIR", "artifacts/traces")
+
+# Determine pytest-xdist worker id (if running under pytest-xdist)
+# xdist sets PYTEST_XDIST_WORKER (e.g. "gw0", "gw1"); fall back to "gw0" for single-process runs.
+WORKER_ID = os.getenv("PYTEST_XDIST_WORKER") or os.getenv("PYTEST_WORKER") or "gw0"
+
+# Per-worker directories to avoid collisions between parallel pytest workers
+VIDEO_DIR = os.path.join(BASE_VIDEO_DIR, WORKER_ID)
+TRACE_DIR = os.path.join(BASE_TRACE_DIR, WORKER_ID)
 
 # Video size defaults to browser size for consistency
 VIDEO_WIDTH = _cfg("VIDEO_WIDTH", BROWSER_WIDTH) 
 VIDEO_HEIGHT = _cfg("VIDEO_HEIGHT", BROWSER_HEIGHT)
 
 KEEP_TRACES = _cfg("KEEP_TRACES", False)
-TRACE_DIR = _cfg("TRACE_DIR", "artifacts/traces")
 TRACE_SNAPSHOTS = _cfg("TRACE_SNAPSHOTS", True)
 TRACE_SCREENSHOTS = _cfg("TRACE_SCREENSHOTS", True)
 
@@ -411,12 +420,16 @@ def _wait_for_attachments_to_settle(allure_results_dir: str, videos_dir: str, ma
 
 def pytest_sessionfinish(session, exitstatus):
     """
-    If ALLURE_AUTO_GENERATE=1 and allure CLI is on PATH, generate the static HTML report
-    from the Allure results directory (default: artifacts/allure-results).
-
-    This version waits briefly for attachments to be copied/written before generating.
+    Auto-generate Allure HTML report (if enabled) *only in the pytest controller process*.
+    Avoid running this inside pytest-xdist workers to prevent concurrent generation collisions.
     """
     try:
+        # If running under pytest-xdist worker, skip HTML generation here.
+        # xdist sets PYTEST_XDIST_WORKER (e.g. 'gw0', 'gw1') in worker envs.
+        if os.getenv("PYTEST_XDIST_WORKER") or os.getenv("PYTEST_WORKER"):
+            # We're in a worker process — do not generate the report here.
+            return
+
         auto = os.getenv("ALLURE_AUTO_GENERATE", "0").lower() in ("1", "true", "yes")
         if not auto:
             return
@@ -430,8 +443,8 @@ def pytest_sessionfinish(session, exitstatus):
         videos_dir = os.getenv("VIDEO_DIR", "artifacts/videos")
         report_dir = os.getenv("ALLURE_REPORT_DIR", "artifacts/allure-report")
 
-        # Wait for attachments to settle (so the generated report picks them up)
-        print(f" Allure auto-generation requested. Waiting up to 10s for attachments to settle...")
+        # Wait for attachments to settle (so generated report picks them up)
+        print(f"Allure auto-generation requested. Waiting up to 10s for attachments to settle...")
         ok = _wait_for_attachments_to_settle(result_dir, videos_dir, max_wait_seconds=10)
         if not ok:
             print("Warning: no non-empty attachments detected or attachments still changing after timeout; proceeding to generate report anyway.")

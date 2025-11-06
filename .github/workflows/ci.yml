@@ -40,14 +40,14 @@ jobs:
         run: |
           python -m playwright install chromium
 
-      - name: Run tests (produce Allure results)
+      - name: Run tests (produce Allure results) - parallel (xdist)
         env:
           HEADED: "false"
           SAUCE_USERNAME: ${{ secrets.SAUCE_USERNAME }}
           SAUCE_PASSWORD: ${{ secrets.SAUCE_PASSWORD }}
         run: |
           mkdir -p artifacts
-          pytest -q --alluredir=artifacts/allure-results || true
+          pytest -q -n 2 --alluredir=artifacts/allure-results || true
 
       - name: Set up Node.js (for allure-commandline install)
         uses: actions/setup-node@v4
