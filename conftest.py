@@ -444,7 +444,7 @@ def pytest_sessionfinish(session, exitstatus):
         report_dir = os.getenv("ALLURE_REPORT_DIR", "artifacts/allure-report")
 
         # Wait for attachments to settle (so generated report picks them up)
-        print(f"Allure auto-generation requested. Waiting up to 10s for attachments to settle...")
+        print(f" Allure auto-generation requested. Waiting up to 10s for attachments to settle...")
         ok = _wait_for_attachments_to_settle(result_dir, videos_dir, max_wait_seconds=10)
         if not ok:
             print("Warning: no non-empty attachments detected or attachments still changing after timeout; proceeding to generate report anyway.")
