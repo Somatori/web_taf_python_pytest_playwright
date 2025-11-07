@@ -109,7 +109,8 @@ This project uses [GitHub Actions](https://docs.github.com/en/actions) to run au
 - Workflow file: `.github/workflows/ci.yml`
 - Runs on **Ubuntu latest** with Python 3.11
 - Installs dependencies, Playwright browsers, and executes the full pytest suite
-- Uploads pytest HTML reports, videos, and Playwright traces as build artifacts
+- Uploads Allure report, videos, and traces as build artifacts
+- Fails the job if the tests are failed
 
 ### CI Behavior
 
