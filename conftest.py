@@ -364,22 +364,45 @@ def credentials():
 
 # Optional: automatically generate Allure HTML after pytest run when requested.
 # Usage: set environment variable ALLURE_AUTO_GENERATE=1 before running pytest and ensure the 'allure' CLI is installed.
+def _has_any_attachments(allure_results_dir: str, videos_dir: str) -> bool:
+    """
+    Quickly check if any likely attachment files exist in allure results or videos dir.
+    Returns True if we find at least one candidate attachment file (.webm, .mp4, .zip).
+    """
+    try:
+        for root_dir in (allure_results_dir, videos_dir):
+            if not os.path.isdir(root_dir):
+                continue
+            for fn in os.listdir(root_dir):
+                if fn.lower().endswith((".webm", ".mp4", ".zip")):
+                    return True
+        return False
+    except Exception:
+        # If something unexpected happens, be conservative and say attachments may exist.
+        return True
+
+
 def _wait_for_attachments_to_settle(allure_results_dir: str, videos_dir: str, max_wait_seconds: int = 10):
     """
     Wait until files in videos_dir / allure_results_dir have stable sizes or until timeout.
-    Returns True if we observed at least one non-empty attachment, False otherwise.
+    Returns True if we observed at least one non-zero attachment and it stabilized, False otherwise.
+
+    Optimization: if no candidate attachment files are present at all, return False immediately
+    (skip waiting).
     """
+    # Quick early-exit: if there are no attachments at all, skip waiting.
+    if not _has_any_attachments(allure_results_dir, videos_dir):
+        # No attachments to wait for
+        return False
+
     start = time.time()
     seen_nonzero = False
-
-    # Track previous sizes to detect stability
     prev_sizes = {}
 
     while True:
         any_changing = False
         seen_nonzero = False
 
-        # Check video files (source)
         for root_dir in (videos_dir, allure_results_dir):
             if not os.path.isdir(root_dir):
                 continue
@@ -404,17 +427,13 @@ def _wait_for_attachments_to_settle(allure_results_dir: str, videos_dir: str, ma
                             any_changing = True
                             prev_sizes[path] = size
 
-        # If we've seen non-zero file(s) and no files are changing, consider settled
         if seen_nonzero and not any_changing:
             return True
 
-        # Timeout check
         elapsed = time.time() - start
         if elapsed >= max_wait_seconds:
-            # give up after timeout; return whether we saw anything non-zero at least once
             return seen_nonzero
 
-        # Sleep briefly before next check
         time.sleep(0.5)
 
 
@@ -425,9 +444,7 @@ def pytest_sessionfinish(session, exitstatus):
     """
     try:
         # If running under pytest-xdist worker, skip HTML generation here.
-        # xdist sets PYTEST_XDIST_WORKER (e.g. 'gw0', 'gw1') in worker envs.
         if os.getenv("PYTEST_XDIST_WORKER") or os.getenv("PYTEST_WORKER"):
-            # We're in a worker process — do not generate the report here.
             return
 
         auto = os.getenv("ALLURE_AUTO_GENERATE", "0").lower() in ("1", "true", "yes")
@@ -443,11 +460,15 @@ def pytest_sessionfinish(session, exitstatus):
         videos_dir = os.getenv("VIDEO_DIR", "artifacts/videos")
         report_dir = os.getenv("ALLURE_REPORT_DIR", "artifacts/allure-report")
 
-        # Wait for attachments to settle (so generated report picks them up)
-        print(f" Allure auto-generation requested. Waiting up to 10s for attachments to settle...")
-        ok = _wait_for_attachments_to_settle(result_dir, videos_dir, max_wait_seconds=10)
-        if not ok:
-            print("Warning: no non-empty attachments detected or attachments still changing after timeout; proceeding to generate report anyway.")
+        # If there are no candidate attachment files at all, skip waiting and generate immediately.
+        if not _has_any_attachments(result_dir, videos_dir):
+            print("No attachments found; skipping attachment-stability wait and generating Allure report now.")
+        else:
+            # Wait for attachments to settle (so generated report picks them up)
+            print(f" Allure auto-generation requested. Waiting up to 10s for attachments to settle...")
+            ok = _wait_for_attachments_to_settle(result_dir, videos_dir, max_wait_seconds=10)
+            if not ok:
+                print("Warning: no non-empty attachments detected or attachments still changing after timeout; proceeding to generate report anyway.")
 
         print(f"Generating Allure report from {result_dir} -> {report_dir} ...")
         try:
