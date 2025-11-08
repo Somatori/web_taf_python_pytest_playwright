@@ -13,7 +13,6 @@ __pycache__/
 artifacts/
 
 # Editor / IDE
-.vscode/
 .idea/
 
 # Misc
