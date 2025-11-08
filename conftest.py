@@ -462,7 +462,7 @@ def pytest_sessionfinish(session, exitstatus):
 
         # If there are no candidate attachment files at all, skip waiting and generate immediately.
         if not _has_any_attachments(result_dir, videos_dir):
-            print("No attachments found; skipping attachment-stability wait and generating Allure report now.")
+            print(" No attachments found; skipping attachment-stability wait and generating Allure report now.")
         else:
             # Wait for attachments to settle (so generated report picks them up)
             print(f" Allure auto-generation requested. Waiting up to 10s for attachments to settle...")
