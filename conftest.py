@@ -250,46 +250,56 @@ def page(request, browser):
             allure_results_dir = os.getenv("ALLURE_RESULTS_DIR", "artifacts/allure-results")
             os.makedirs(allure_results_dir, exist_ok=True)
 
-            def _copy_and_attach(src_path: str, dest_name: str, attach_name: str, mime_or_type):
-                try:
-                    if not src_path or not os.path.exists(src_path):
-                        print(f"DEBUG: source not found for attach: {src_path}")
-                        return False
-
-                    dest_path = os.path.join(allure_results_dir, dest_name)
-                    # copy the file into allure-results to make sure it's available to the reporter
-                    shutil.copy2(src_path, dest_path)
-                    print(f"DEBUG: copied {src_path} -> {dest_path}")
-
-                    try:
-                        if AttachmentType is not None and hasattr(AttachmentType, mime_or_type):
-                            atype = getattr(AttachmentType, mime_or_type)
-                            allure.attach.file(dest_path, name=attach_name, attachment_type=atype)
-                        else:
-                            fallback = "application/octet-stream"
-                            if mime_or_type.lower() == "webm":
-                                fallback = "video/webm"
-                            elif mime_or_type.lower() == "zip":
-                                fallback = "application/zip"
-                            allure.attach.file(dest_path, name=attach_name, attachment_type=fallback)
-                        print(f"DEBUG: attached {attach_name} -> {dest_path}")
-                        return True
-                    except Exception as e:
-                        print("DEBUG: allure.attach.file failed:", e)
-                        return False
-                except Exception as e:
-                    print("DEBUG: copy_and_attach failed:", e)
+        def _copy_and_attach(src_path: str, dest_name: str, attach_name: str, mime_or_type):
+            try:
+                if not src_path or not os.path.exists(src_path):
+                    print(f"DEBUG: source not found for attach: {src_path}")
                     return False
 
-            # Attach video
-            if video_path:
-                dest_video_name = f"{_safe_test_name(request.node.nodeid)}_video.webm"
-                _copy_and_attach(video_path, dest_video_name, "video", "WEBM")
+                dest_path = os.path.join(allure_results_dir, dest_name)
+                shutil.copy2(src_path, dest_path)
+                print(f"DEBUG: copied {src_path} -> {dest_path}")
 
-            # Attach trace
-            if trace_path:
-                dest_trace_name = f"{_safe_test_name(request.node.nodeid)}_trace.zip"
-                _copy_and_attach(trace_path, dest_trace_name, "trace", "ZIP")
+                try:
+                    # choose display name with extension so "download" link suggests correct filename
+                    # attach_name is the base like "trace" or "video"
+                    if mime_or_type.lower() == "webm":
+                        display_name = f"{attach_name}.webm"
+                    elif mime_or_type.lower() == "zip":
+                        display_name = f"{attach_name}.zip"
+                    else:
+                        display_name = attach_name
+
+                    if AttachmentType is not None and hasattr(AttachmentType, mime_or_type):
+                        atype = getattr(AttachmentType, mime_or_type)
+                        allure.attach.file(dest_path, name=display_name, attachment_type=atype)
+                    else:
+                        fallback = "application/octet-stream"
+                        if mime_or_type.lower() == "webm":
+                            fallback = "video/webm"
+                        elif mime_or_type.lower() == "zip":
+                            fallback = "application/zip"
+                        allure.attach.file(dest_path, name=display_name, attachment_type=fallback)
+
+                    print(f"DEBUG: attached {display_name} -> {dest_path}")
+                    return True
+                except Exception as e:
+                    print("DEBUG: allure.attach.file failed:", e)
+                    return False
+            except Exception as e:
+                print("DEBUG: copy_and_attach failed:", e)
+                return False
+
+        # Attach video
+        if video_path:
+            dest_video_name = f"{_safe_test_name(request.node.nodeid)}_video.webm"
+            _copy_and_attach(video_path, dest_video_name, "video", "WEBM")
+
+        # Attach trace
+        if trace_path:
+            dest_trace_name = f"{_safe_test_name(request.node.nodeid)}_trace.zip"
+            _copy_and_attach(trace_path, dest_trace_name, "trace", "ZIP")
+
 
         # Keep or delete trace
         if trace_path and os.path.exists(trace_path):
