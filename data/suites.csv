@@ -1,3 +1,3 @@
 "DESCRIPTION","DURATION IN MS","NAME","PARENT SUITE","START TIME","STATUS","STOP TIME","SUB SUITE","SUITE","TEST CLASS","TEST METHOD"
-"","1219","test_add_item_and_checkout","tests","Sat Nov 08 04:31:09 UTC 2025","passed","Sat Nov 08 04:31:10 UTC 2025","","test_checkout","",""
-"","963","test_standard_user_can_login","tests","Sat Nov 08 04:31:09 UTC 2025","passed","Sat Nov 08 04:31:10 UTC 2025","","test_login","",""
+"","815","test_standard_user_can_login","tests","Wed Nov 12 20:07:53 UTC 2025","passed","Wed Nov 12 20:07:54 UTC 2025","","test_login","",""
+"","1172","test_add_item_and_checkout","tests","Wed Nov 12 20:07:53 UTC 2025","passed","Wed Nov 12 20:07:54 UTC 2025","","test_checkout","",""
