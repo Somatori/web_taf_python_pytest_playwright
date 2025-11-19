@@ -1,2 +1,0 @@
-DEBUG: copy_and_attach failed: cannot access free variable 'allure_results_dir' where it is not associated with a value in enclosing scope
-DEBUG: copy_and_attach failed: cannot access free variable 'allure_results_dir' where it is not associated with a value in enclosing scope
