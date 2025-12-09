@@ -19,6 +19,18 @@ def _cfg(attr, default):
         return default
     return getattr(cfg, attr, default)
 
+def _is_path_under(path: str, parent: str) -> bool:
+    """
+    Return True if `path` is inside the directory `parent`.
+    Robust to relative/absolute paths.
+    """
+    try:
+        path_abs = os.path.abspath(path)
+        parent_abs = os.path.abspath(parent)
+        return os.path.commonpath([path_abs, parent_abs]) == parent_abs
+    except Exception:
+        return False
+
 # Config values (with sensible fallbacks)
 BROWSER = _cfg("BROWSER", "chromium")
 BROWSER_WIDTH = _cfg("BROWSER_WIDTH", 1280)
@@ -35,9 +47,14 @@ BASE_TRACE_DIR = _cfg("TRACE_DIR", "artifacts/traces")
 # xdist sets PYTEST_XDIST_WORKER (e.g. "gw0", "gw1"); fall back to "gw0" for single-process runs.
 WORKER_ID = os.getenv("PYTEST_XDIST_WORKER") or os.getenv("PYTEST_WORKER") or "gw0"
 
-# Per-worker directories to avoid collisions between parallel pytest workers
-VIDEO_DIR = os.path.join(BASE_VIDEO_DIR, WORKER_ID)
-TRACE_DIR = os.path.join(BASE_TRACE_DIR, WORKER_ID)
+# Allow CI to set RUN_ATTEMPT (1,2,...) so artifacts from different attempts don't collide.
+# Default to "1" for local runs.
+RUN_ATTEMPT = os.getenv("RUN_ATTEMPT", os.getenv("ATTEMPT", "1"))
+
+# Per-worker + per-attempt directories to avoid collisions between parallel pytest workers and reruns
+# e.g. artifacts/videos/attempt_1/gw0, artifacts/traces/attempt_2/gw1
+VIDEO_DIR = os.path.join(BASE_VIDEO_DIR, f"attempt_{RUN_ATTEMPT}", WORKER_ID)
+TRACE_DIR = os.path.join(BASE_TRACE_DIR, f"attempt_{RUN_ATTEMPT}", WORKER_ID)
 
 # Video size defaults to browser size for consistency
 VIDEO_WIDTH = _cfg("VIDEO_WIDTH", BROWSER_WIDTH) 
@@ -57,20 +74,20 @@ def _safe_test_name(nodeid: str) -> str:
 
 def pytest_sessionstart(session):
     """
-    Clean up previous Allure raw results before the test session starts.
-    This removes the 'artifacts/allure-results' directory if present and
-    creates an empty directory so the current run starts fresh.
+    Prepare Allure raw-results directory for the current run.
+
+    This function ensures the current run's per-attempt results directory exists
+    and is intentionally non-destructive: it will not remove previous attempt folders.
     """
     try:
-        results_dir = os.path.join(os.getcwd(), "artifacts", "allure-results")
-        if os.path.isdir(results_dir):
-            try:
-                shutil.rmtree(results_dir)
-                print(f"Removed existing Allure results directory: {results_dir}")
-            except Exception as e:
-                print(f"Warning: failed to remove {results_dir}: {e}")
-        # recreate empty directory so later steps can write into it
+        repo_root = os.getcwd()
+        results_root = os.path.join(repo_root, "artifacts", "allure-results")
+        default_results = os.path.join(results_root, f"attempt_{os.getenv('RUN_ATTEMPT', '1')}")
+        results_dir = os.getenv("ALLURE_RESULTS_DIR", default_results)
+
+        # Ensure the directory exists for this run (do not remove anything)
         os.makedirs(results_dir, exist_ok=True)
+
     except Exception as e:
         print("Warning: pytest_sessionstart cleanup failed:", e)
 
@@ -254,12 +271,10 @@ def page(request, browser):
             def _copy_and_attach(src_path: str, dest_name: str, attach_name: str, mime_or_type):
                 try:
                     if not src_path or not os.path.exists(src_path):
-                        print(f"DEBUG: source not found for attach: {src_path}")
                         return False
 
                     dest_path = os.path.join(allure_results_dir, dest_name)
                     shutil.copy2(src_path, dest_path)
-                    print(f"DEBUG: copied {src_path} -> {dest_path}")
 
                     try:
                         # choose display name with extension so "download" link suggests correct filename
@@ -281,13 +296,10 @@ def page(request, browser):
                                 fallback = "application/zip"
                             allure.attach.file(dest_path, name=display_name, attachment_type=fallback)
 
-                        print(f"DEBUG: attached {display_name} -> {dest_path}")
                         return True
-                    except Exception as e:
-                        print("DEBUG: allure.attach.file failed:", e)
+                    except Exception:
                         return False
-                except Exception as e:
-                    print("DEBUG: copy_and_attach failed:", e)
+                except Exception:
                     return False
 
             # Attach video (only if present)
@@ -299,36 +311,46 @@ def page(request, browser):
             if trace_path:
                 dest_trace_name = f"{_safe_test_name(request.node.nodeid)}_trace.zip"
                 _copy_and_attach(trace_path, dest_trace_name, "trace", "ZIP")
-        else:
-            # If allure is not present or test didn't fail, we don't attempt to copy/attach.
-            if not allure:
-                print("DEBUG: allure not available; skipping attachment copy/attach.")
 
-
-        # Keep or delete trace
+        # Keep or delete trace (safe: only remove traces that belong to this run)
         if trace_path and os.path.exists(trace_path):
             if KEEP_TRACES or test_failed:
+                # keep it (or we'll copy it to ALLURE_RESULTS_DIR earlier)
                 pass
             else:
-                try:
-                    os.remove(trace_path)
-                except Exception:
+                # Only remove if the trace file lives inside this run's TRACE_DIR.
+                # This prevents accidental deletion of other attempts' traces.
+                if _is_path_under(trace_path, TRACE_DIR):
+                    try:
+                        os.remove(trace_path)
+                    except Exception:
+                        pass
+                else:
+                    # do not remove files outside this run's TRACE_DIR
                     pass
 
-        # Keep or move video
+        # Keep or move video (safe: only delete video files that belong to this run)
         if video_path and os.path.exists(video_path):
             safe_vid_dest = os.path.join(VIDEO_DIR, _safe_test_name(request.node.nodeid) + ".webm")
             if KEEP_VIDEOS or test_failed:
                 try:
+                    # Ensure VIDEO_DIR exists
+                    os.makedirs(os.path.dirname(safe_vid_dest), exist_ok=True)
                     if os.path.exists(safe_vid_dest):
                         os.remove(safe_vid_dest)
                     shutil.move(video_path, safe_vid_dest)
                 except Exception:
                     pass
             else:
-                try:
-                    os.remove(video_path)
-                except Exception:
+                # For passed tests we usually delete temporary video files to avoid accumulation.
+                # Only delete if the video_path actually belongs to this run's VIDEO_DIR.
+                if _is_path_under(video_path, VIDEO_DIR):
+                    try:
+                        os.remove(video_path)
+                    except Exception:
+                        pass
+                else:
+                    # do not remove files outside this run's VIDEO_DIR
                     pass
 
         # attempt cleanup of intermediate directories
@@ -470,8 +492,17 @@ def pytest_sessionfinish(session, exitstatus):
             print("ALLURE_AUTO_GENERATE is set but 'allure' CLI was not found in PATH. Skipping report generation.")
             return
 
-        result_dir = os.getenv("ALLURE_RESULTS_DIR", "artifacts/allure-results")
-        videos_dir = os.getenv("VIDEO_DIR", "artifacts/videos")
+        # Resolve per-attempt defaults consistently with pytest_sessionstart
+        # Use RUN_ATTEMPT if provided; default to 1. This ensures sessionfinish
+        # looks at the same per-attempt directories as sessionstart.
+        RUN_ATTEMPT = os.getenv("RUN_ATTEMPT", os.getenv("ATTEMPT", "1"))
+
+        # Per-attempt default results and videos dirs (mirrors pytest_sessionstart logic)
+        default_results_dir = os.path.join("artifacts", "allure-results", f"attempt_{RUN_ATTEMPT}")
+        default_videos_dir = os.path.join("artifacts", "videos", f"attempt_{RUN_ATTEMPT}")
+
+        result_dir = os.getenv("ALLURE_RESULTS_DIR", default_results_dir)
+        videos_dir = os.getenv("VIDEO_DIR", default_videos_dir)
         report_dir = os.getenv("ALLURE_REPORT_DIR", "artifacts/allure-report")
 
         # If there are no candidate attachment files at all, skip waiting and generate immediately.

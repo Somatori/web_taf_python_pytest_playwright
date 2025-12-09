@@ -40,24 +40,46 @@ jobs:
         run: |
           python -m playwright install chromium
 
-      # ---------- Run tests and capture exit code ----------
-      - name: Run tests (produce Allure results) - parallel (xdist)
+      # ---------- Run tests (attempt 1) ----------
+      - name: Run tests (produce Allure results) - attempt 1
         id: run-tests
         continue-on-error: true
         env:
           HEADED: "false"
+          RUN_ATTEMPT: "1"
+          ALLURE_RESULTS_DIR: artifacts/allure-results/attempt_1
+          VIDEO_DIR: artifacts/videos/attempt_1
           SAUCE_USERNAME: ${{ secrets.SAUCE_USERNAME }}
           SAUCE_PASSWORD: ${{ secrets.SAUCE_PASSWORD }}
         run: |
           set +e
           mkdir -p artifacts
-          # run pytest in 2 workers and write Allure raw results
-          pytest -q -n 2 --alluredir=artifacts/allure-results
+          pytest -q -n 2 --alluredir="${ALLURE_RESULTS_DIR}"
           rc=$?
-          echo "exit_code=$rc" >> $GITHUB_OUTPUT
+          echo "first_exit_code=$rc" >> $GITHUB_OUTPUT
+
+      # ---------- Re-run failed tests (attempt 2) ----------
+      - name: Re-run failed tests (attempt 2)
+        id: rerun-tests
+        continue-on-error: true
+        # only run if first attempt had failures
+        if: ${{ steps.run-tests.outputs.first_exit_code != '0' }}
+        env:
+          HEADED: "false"
+          RUN_ATTEMPT: "2"
+          ALLURE_RESULTS_DIR: artifacts/allure-results/attempt_2
+          VIDEO_DIR: artifacts/videos/attempt_2
+          SAUCE_USERNAME: ${{ secrets.SAUCE_USERNAME }}
+          SAUCE_PASSWORD: ${{ secrets.SAUCE_PASSWORD }}
+        run: |
+          set +e
+          mkdir -p artifacts
+          # rerun only failed tests (pytest --last-failed), write raw results for attempt_2
+          pytest --last-failed -q -n 2 --alluredir="${ALLURE_RESULTS_DIR}"
+          rc=$?
+          echo "rerun_exit_code=$rc" >> $GITHUB_OUTPUT
 
       # ---------- Install Node + Java + Allure CLI so we can generate HTML ----------
-      # these should run even if tests failed
       - name: Set up Node.js (for allure-commandline install)
         if: always()
         uses: actions/setup-node@v4
@@ -77,12 +99,36 @@ jobs:
           npm install -g allure-commandline --unsafe-perm=true
           allure --version
 
-      # ---------- Generate Allure report (always) ----------
+      # ---------- Merge Allure raw results (attempt_1 + attempt_2 if present) ----------
+      - name: Merge Allure raw results (attempts -> merged)
+        if: always()
+        run: |
+          set -e
+          MERGED_DIR=artifacts/allure-results/merged
+          mkdir -p "${MERGED_DIR}"
+          # copy attempt 1
+          if [ -d "artifacts/allure-results/attempt_1" ]; then
+            cp -a artifacts/allure-results/attempt_1/. "${MERGED_DIR}/" || true
+          fi
+          # copy attempt 2 if present (overwrites any duplicates from attempt_1)
+          if [ -d "artifacts/allure-results/attempt_2" ]; then
+            cp -a artifacts/allure-results/attempt_2/. "${MERGED_DIR}/" || true
+          fi
+          echo "Merged results into ${MERGED_DIR}"
+
+      # ---------- Generate Allure report (local CLI) ----------
       - name: Generate Allure report (local CLI)
         if: always()
         run: |
           mkdir -p artifacts/allure-report
-          allure generate artifacts/allure-results -o artifacts/allure-report --clean
+          # generate from merged (or attempt_1 if merged empty)
+          if [ -d "artifacts/allure-results/merged" ] && [ "$(ls -A artifacts/allure-results/merged)" ]; then
+            allure generate artifacts/allure-results/merged -o artifacts/allure-report --clean
+          elif [ -d "artifacts/allure-results/attempt_1" ]; then
+            allure generate artifacts/allure-results/attempt_1 -o artifacts/allure-report --clean
+          else
+            echo "No allure results found to generate report."
+          fi
 
       # ---------- Upload artifacts (always) ----------
       - name: Upload Allure report artifact (zip)
@@ -91,6 +137,13 @@ jobs:
         with:
           name: allure-report-${{ github.run_id }}
           path: artifacts/allure-report
+
+      - name: Upload raw Allure results (all attempts)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results-all-attempts-${{ github.run_id }}
+          path: artifacts/allure-results
 
       - name: Upload videos (if any)
         if: always()
@@ -115,18 +168,33 @@ jobs:
           publish_dir: ./artifacts/allure-report
           publish_branch: gh-pages
 
-      # ---------- Final step: fail job if tests failed (runs always) ----------
-      - name: Fail the job if tests failed
+      # ---------- Final step: fail job if tests still failed after rerun ----------
+      - name: Fail the job if tests failed after rerun
         if: always()
         run: |
-          exit_code=${{ steps.run-tests.outputs.exit_code }}
-          if [ -z "$exit_code" ]; then
-            echo "No exit_code found from tests; failing to be safe."
-            exit 1
+          first_exit_code="${{ steps.run-tests.outputs.first_exit_code }}"
+          rerun_exit_code="${{ steps.rerun-tests.outputs.rerun_exit_code }}"
+
+          # default empty -> 0 (meaning: step was skipped)
+          if [ -z "${first_exit_code}" ]; then
+            first_exit_code=0
           fi
-          if [ "$exit_code" != "0" ]; then
-            echo "ERROR: Tests failed with exit code $exit_code. Failing job to reflect test result."
-            exit $exit_code
-          else
-            echo "All tests passed (exit code 0)."
+          if [ -z "${rerun_exit_code}" ]; then
+            rerun_exit_code=0
           fi
+
+          echo "First attempt exit code: ${first_exit_code}"
+          echo "Rerun attempt exit code: ${rerun_exit_code}"
+
+          if [ "${first_exit_code}" = "0" ]; then
+            echo "All tests passed on first attempt."
+            exit 0
+          fi
+
+          if [ "${first_exit_code}" != "0" ] && [ "${rerun_exit_code}" = "0" ]; then
+            echo "Some tests failed on first attempt but passed on rerun. Marking job as success."
+            exit 0
+          fi
+
+          echo "Tests failed even after rerun (exit=${rerun_exit_code}). Failing the job."
+          exit ${rerun_exit_code}

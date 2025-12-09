@@ -74,9 +74,20 @@ The **Allure** is used for rich HTML reports (attachments, history, etc).
 Running tests with report generation:
 
 ```bash
-ALLURE_AUTO_GENERATE=1 pytest -q --alluredir=artifacts/allure-results
-# or for running tests in parallel
-ALLURE_AUTO_GENERATE=1 pytest -q -n 2 --alluredir=artifacts/allure-results
+# [optionally ] remove previous artifacts:
+rm -rf artifacts/allure-results artifacts/allure-report artifacts/videos artifacts/traces
+
+# initial attempt
+ALLURE_AUTO_GENERATE=1 RUN_ATTEMPT=1 ALLURE_RESULTS_DIR=artifacts/allure-results/attempt_1 VIDEO_DIR=artifacts/videos pytest --alluredir=artifacts/allure-results/attempt_1
+
+# [optionally] re-run failed tests
+RUN_ATTEMPT=2 ALLURE_RESULTS_DIR=artifacts/allure-results/attempt_2 VIDEO_DIR=artifacts/videos pytest --last-failed --alluredir=artifacts/allure-results/attempt_2
+
+# [optionally, if used both attempts] merge Allure results from both attempts into one report
+mkdir -p artifacts/allure-results/merged
+cp -a artifacts/allure-results/attempt_1/. artifacts/allure-results/merged/ || true
+cp -a artifacts/allure-results/attempt_2/. artifacts/allure-results/merged/ || true
+allure generate artifacts/allure-results/merged -o artifacts/allure-report --clean
 ```
 
 Opening the generated report:
