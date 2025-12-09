@@ -48,7 +48,7 @@ jobs:
           HEADED: "false"
           RUN_ATTEMPT: "1"
           ALLURE_RESULTS_DIR: artifacts/allure-results/attempt_1
-          VIDEO_DIR: artifacts/videos/attempt_1
+          VIDEO_DIR: artifacts/videos
           SAUCE_USERNAME: ${{ secrets.SAUCE_USERNAME }}
           SAUCE_PASSWORD: ${{ secrets.SAUCE_PASSWORD }}
         run: |
@@ -68,7 +68,7 @@ jobs:
           HEADED: "false"
           RUN_ATTEMPT: "2"
           ALLURE_RESULTS_DIR: artifacts/allure-results/attempt_2
-          VIDEO_DIR: artifacts/videos/attempt_2
+          VIDEO_DIR: artifacts/videos
           SAUCE_USERNAME: ${{ secrets.SAUCE_USERNAME }}
           SAUCE_PASSWORD: ${{ secrets.SAUCE_PASSWORD }}
         run: |
